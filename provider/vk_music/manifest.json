@@ -1,0 +1,8 @@
+{
+  "type": "music",
+  "domain": "vk_music",
+  "name": "VK Music (experimental)",
+  "description": "Experimental VK Music provider for Music Assistant VK Edition.",
+  "codeowners": ["@maxidrom2008"],
+  "requirements": []
+}
