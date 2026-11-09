@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "vk_music_assistant/**"
+      - "music_assistant_vk/**"
       - "provider/**"
       - ".github/workflows/build-addon.yml"
 
@@ -40,10 +40,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          # Build context must be the repository root: the Dockerfile copies
-          # provider/vk_music, which is outside vk_music_assistant/.
           context: .
-          file: ./vk_music_assistant/Dockerfile
+          file: ./music_assistant_vk/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/music-assistant-vk-edition:0.1.0
