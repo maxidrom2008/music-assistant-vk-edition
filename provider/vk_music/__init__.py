@@ -329,11 +329,22 @@ class VKMusicProvider(MusicProvider):
         if path.rstrip("/").endswith("://") or path in ("", f"{self.instance_id}://"):
             return [
                 BrowseFolder(
+                    item_id="my_tracks",
+                    provider=self.instance_id,
+                    name="Моя музыка",
+                ),
+                BrowseFolder(
                     item_id="my_playlists",
                     provider=self.instance_id,
-                    name="My VK playlists",
-                )
+                    name="Мои плейлисты",
+                ),
             ]
+        if path.rstrip("/").endswith("my_tracks") or path.endswith("://my_tracks"):
+            user = await self._service.get_user_info_async()
+            songs = await self._service.get_songs_by_userid_async(
+                user.userid, count=100, offset=0
+            )
+            return [self._parse_song(song) for song in songs]
         if path.rstrip("/").endswith("my_playlists") or path.endswith("://my_playlists"):
             user = await self._service.get_user_info_async()
             entries = await self._service.get_playlists_by_userid_async(user.userid, count=100)
