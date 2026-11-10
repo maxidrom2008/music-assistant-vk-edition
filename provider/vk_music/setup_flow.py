@@ -228,6 +228,7 @@ async def run_setup(session: SetupSession) -> None:
                 errors = {"base": "Введите логин и пароль VK."}
                 continue
 
+            user_agent = VkMobileClient.user_agent
             try:
                 token = await _authenticate(session, login, password)
             except _InvalidCredentials:
@@ -245,16 +246,25 @@ async def run_setup(session: SetupSession) -> None:
                             type=ConfigEntryType.SECURE_STRING,
                             label="VK access token",
                             required=True,
-                        )
+                        ),
+                        ConfigEntry(
+                            key="manual_user_agent",
+                            type=ConfigEntryType.STRING,
+                            label="VK User-Agent",
+                            default_value=VkMobileClient.user_agent,
+                            required=True,
+                        ),
                     ],
                     step_id="token_fallback",
                     last_step=True,
                 )
                 token = str(fallback.get("manual_token") or "").strip()
+                user_agent = str(
+                    fallback.get("manual_user_agent") or VkMobileClient.user_agent
+                ).strip()
             except VKAuthError as err:
                 raise AbortFlow("auth_failed") from err
 
-            user_agent = VkMobileClient.user_agent
             service = Service(user_agent=user_agent, token=token)
             if not await service.is_token_valid_async():
                 raise AbortFlow("token_validation_failed")
