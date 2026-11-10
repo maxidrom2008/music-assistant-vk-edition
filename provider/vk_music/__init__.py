@@ -246,6 +246,13 @@ class VKMusicProvider(MusicProvider):
             raise MediaNotFoundError(f"VK track not found: {prov_track_id}")
         return self._parse_song(songs[0])
 
+    async def get_artist(self, prov_artist_id: str) -> Artist:
+        """Resolve an artist identity referenced by VK tracks."""
+        name = prov_artist_id.removeprefix("artist:").strip()
+        if not name:
+            raise MediaNotFoundError("Invalid VK artist identifier")
+        return self._parse_artist(name)
+
     def _apply_collection_metadata(self, item: Album | Playlist, payload: dict[str, str]) -> None:
         """Restore collection text and artwork saved with a provider item id."""
         if description := payload.get("description"):
