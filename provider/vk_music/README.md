@@ -17,6 +17,10 @@ In Music Assistant open **Settings → Music Providers → Add provider → VK M
 - Retrieve tracks from selected albums and playlists.
 - Resolve an audio URL immediately before playback and hand it to Music Assistant's normal HTTP stream pipeline.
 
+## Browsing behavior
+
+Personal tracks and playlist collections are fetched in pages of up to 100 items. A next-page folder is shown when a full page is returned. Recently played uses the `Service.get_recent_songs_async()` catalog method shipped by `vkpymusic` 4.0.2; the private VK catalog may return an empty list or an access error depending on the account.
+
 ## Limitations
 
 Track objects supplied by `vkpymusic` currently expose title, artist, duration and VK IDs, but not a stable album or track artwork field. Album and playlist covers/descriptions are available when VK returns them. Recently played depends on VK's private catalog endpoint and may be unavailable for some tokens or accounts.
