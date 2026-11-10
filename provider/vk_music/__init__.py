@@ -6,16 +6,18 @@ downloads audio to disk, or bypasses service access controls.
 from __future__ import annotations
 
 import base64
+import json
 from typing import TYPE_CHECKING
 
 from music_assistant.models.music_provider import MusicProvider
-from music_assistant_models.enums import ContentType, MediaType, ProviderFeature, StreamType
+from music_assistant_models.enums import ContentType, ImageType, MediaType, ProviderFeature, StreamType
 from music_assistant_models.errors import LoginFailed, MediaNotFoundError, SetupFailedError
 from music_assistant_models.media_items import (
     Album,
     Artist,
     BrowseFolder,
     ItemMapping,
+    MediaItemImage,
     Playlist,
     ProviderMapping,
     SearchResults,
@@ -93,19 +95,33 @@ class VKMusicProvider(MusicProvider):
         }
 
     @staticmethod
-    def _encode_collection_id(owner_id: int | str, playlist_id: int | str, access_key: str) -> str:
-        """Encode VK collection ids without leaking delimiters into item identifiers."""
-        key = base64.urlsafe_b64encode(access_key.encode()).decode().rstrip("=")
-        return f"{owner_id}:{playlist_id}:{key}"
+    def _encode_collection_id(entry, media_type: MediaType) -> str:
+        """Encode VK collection identifiers and metadata without exposing delimiters."""
+        payload = {
+            "owner": str(entry.owner_id),
+            "playlist": str(entry.playlist_id),
+            "key": str(entry.access_key),
+            "name": str(entry.title or ""),
+            "description": str(getattr(entry, "description", "") or ""),
+            "photo": str(getattr(entry, "photo", "") or ""),
+            "type": media_type.value,
+        }
+        packed = base64.urlsafe_b64encode(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+        ).decode().rstrip("=")
+        return f"vk:{packed}"
 
     @staticmethod
-    def _decode_collection_id(item_id: str) -> tuple[int, int, str]:
-        """Decode owner, playlist and VK access key."""
+    def _decode_collection_id(item_id: str) -> dict[str, str]:
+        """Decode a VK collection id and its cached descriptive metadata."""
         try:
-            owner, playlist, key = item_id.split(":", 2)
-            key += "=" * (-len(key) % 4)
-            return int(owner), int(playlist), base64.urlsafe_b64decode(key).decode()
-        except (ValueError, UnicodeDecodeError) as err:
+            packed = item_id.removeprefix("vk:")
+            packed += "=" * (-len(packed) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(packed).decode())
+            if not all(payload.get(key) for key in ("owner", "playlist", "key")):
+                raise ValueError("missing collection fields")
+            return payload
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as err:
             raise MediaNotFoundError("Invalid VK collection identifier") from err
 
     def _parse_song(self, song) -> Track:
@@ -144,29 +160,30 @@ class VKMusicProvider(MusicProvider):
 
     def _parse_vk_collection(self, entry, media_type: MediaType) -> Album | Playlist:
         """Convert the VK library's playlist-shaped album and playlist objects."""
-        item_id = self._encode_collection_id(entry.owner_id, entry.playlist_id, entry.access_key)
+        item_id = self._encode_collection_id(entry, media_type)
         mapping = self._mapping(item_id)
         if media_type == MediaType.ALBUM:
-            album = Album(
+            item = Album(
                 item_id=item_id,
                 provider=self.instance_id,
                 name=entry.title or "Untitled album",
                 provider_mappings=mapping,
             )
-            if entry.photo:
-                album.metadata.images = []
-                # The API exposes a direct cover URL; let MA resolve/use it via metadata elsewhere.
-            return album
-        playlist = Playlist(
-            item_id=item_id,
-            provider=self.instance_id,
-            name=entry.title or "Untitled playlist",
-            owner=str(entry.owner_id),
-            provider_mappings=mapping,
-        )
-        if entry.description:
-            playlist.metadata.description = entry.description
-        return playlist
+        else:
+            item = Playlist(
+                item_id=item_id,
+                provider=self.instance_id,
+                name=entry.title or "Untitled playlist",
+                owner=str(entry.owner_id),
+                provider_mappings=mapping,
+            )
+        if description := getattr(entry, "description", None):
+            item.metadata.description = description
+        if photo := getattr(entry, "photo", None):
+            item.metadata.images = UniqueList(
+                [MediaItemImage(type=ImageType.THUMB, path=photo, provider=self.instance_id, remotely_accessible=True)]
+            )
+        return item
 
     async def search(
         self, search_query: str, media_types: list[MediaType], limit: int = 5
@@ -180,7 +197,8 @@ class VKMusicProvider(MusicProvider):
         try:
             if MediaType.TRACK in media_types or MediaType.ARTIST in media_types:
                 songs = await self._service.search_songs_by_text_async(query, count=safe_limit)
-                results.tracks = [self._parse_song(song) for song in songs]
+                if MediaType.TRACK in media_types:
+                    results.tracks = [self._parse_song(song) for song in songs]
                 if MediaType.ARTIST in media_types:
                     seen: set[str] = set()
                     artists: list[Artist] = []
@@ -220,28 +238,31 @@ class VKMusicProvider(MusicProvider):
 
     async def get_album(self, prov_album_id: str) -> Album:
         """Resolve an album selected from VK search."""
-        owner, playlist, _key = self._decode_collection_id(prov_album_id)
+        payload = self._decode_collection_id(prov_album_id)
+        playlist = payload['playlist']
         return Album(
             item_id=prov_album_id,
             provider=self.instance_id,
-            name=f"VK album {playlist}",
+            name=payload.get("name") or f"VK album {playlist}",
             provider_mappings=self._mapping(prov_album_id),
         )
 
     async def get_playlist(self, prov_playlist_id: str) -> Playlist:
         """Resolve a playlist selected from VK search."""
-        owner, playlist, _key = self._decode_collection_id(prov_playlist_id)
+        payload = self._decode_collection_id(prov_playlist_id)
+        owner, playlist = payload['owner'], payload['playlist']
         return Playlist(
             item_id=prov_playlist_id,
             provider=self.instance_id,
-            name=f"VK playlist {playlist}",
+            name=payload.get("name") or f"VK playlist {playlist}",
             owner=str(owner),
             provider_mappings=self._mapping(prov_playlist_id),
         )
 
     async def get_album_tracks(self, prov_album_id: str) -> list[Track]:
         """Fetch the tracks belonging to a VK album."""
-        owner, playlist, access_key = self._decode_collection_id(prov_album_id)
+        payload = self._decode_collection_id(prov_album_id)
+        owner, playlist, access_key = int(payload['owner']), int(payload['playlist']), payload['key']
         songs = await self._service.get_songs_by_playlist_id_async(
             owner, playlist, access_key, count=100, offset=0
         )
@@ -249,7 +270,8 @@ class VKMusicProvider(MusicProvider):
 
     async def get_playlist_tracks(self, prov_playlist_id: str, page: int = 0) -> list[Track]:
         """Fetch one page of a VK playlist."""
-        owner, playlist, access_key = self._decode_collection_id(prov_playlist_id)
+        payload = self._decode_collection_id(prov_playlist_id)
+        owner, playlist, access_key = int(payload['owner']), int(payload['playlist']), payload['key']
         songs = await self._service.get_songs_by_playlist_id_async(
             owner, playlist, access_key, count=100, offset=page * 100
         )
