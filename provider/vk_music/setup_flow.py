@@ -239,8 +239,22 @@ async def run_setup(session: SetupSession) -> None:
                 continue
             except _RateLimited as err:
                 raise AbortFlow("rate_limited") from err
-            except _BrowserCaptchaRequired as err:
-                raise AbortFlow("browser_captcha_required") from err
+            except _BrowserCaptchaRequired:
+                # VK ID CAPTCHA needs a browser-generated success_token. Do not
+                # launch Selenium on the HA host; retain a manual-token fallback.
+                fallback = await session.form(
+                    [
+                        ConfigEntry(
+                            key="manual_token",
+                            type=ConfigEntryType.SECURE_STRING,
+                            label="VK access token",
+                            required=True,
+                        )
+                    ],
+                    step_id="token_fallback",
+                    last_step=True,
+                )
+                token = str(fallback.get("manual_token") or "").strip()
             except VKAuthError as err:
                 raise AbortFlow("auth_failed") from err
 
