@@ -1,7 +1,7 @@
 name: Music Assistant VK Edition
-version: "0.2.6"
+version: "0.2.7"
 slug: music_assistant_vk
-description: Music Assistant 2.10.9 with VK Music provider, personal library, playlists and playback
+description: Music Assistant 2.10.9 with VK Music, personal library, playlists and interactive login
 url: https://github.com/maxidrom2008/music-assistant-vk-edition
 changelog: https://raw.githubusercontent.com/maxidrom2008/music-assistant-vk-edition/main/CHANGELOG.md
 arch:
