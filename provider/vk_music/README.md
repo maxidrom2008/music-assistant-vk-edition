@@ -1,15 +1,20 @@
 # VK Music provider
 
-Adds VK track search and authorized playback to Music Assistant 2.10.9.
+VK Music provider for Music Assistant Server 2.10.9.
 
 ## Setup
-Add **VK Music** in Settings → Music Providers. Supply an existing VK access token permitted to access VK audio and its matching client User-Agent. Music Assistant stores secure setup values in its provider configuration. This integration never asks for a VK password or performs password/2FA login.
 
-A paid subscription does not guarantee that every token type or API method is accepted by VK.
+In Music Assistant open **Settings → Music Providers → Add provider → VK Music**. Enter an existing VK access token with the required VK Audio access and the matching client User-Agent. The token is entered through a secure setup field and stored in provider setup data. The integration never asks for the VK password, SMS/2FA code or browser cookies.
 
-## Current scope
-- Search tracks.
-- Resolve a fresh audio URL at playback time.
-- Return stream details to Music Assistant; audio URLs are not embedded in catalog results.
+## Implemented
 
-Artist/album/playlist browsing and library sync are not advertised yet. VK may deny access to individual tracks or return expiring URLs. No DRM, subscription, region, or access-control bypass is implemented; this provider does not download or store audio.
+- Track search.
+- Artist results derived from matching track results, with artist top-track and album lookup.
+- Album and playlist search.
+- Browse the authenticated user's playlists.
+- Retrieve tracks from selected albums and playlists.
+- Resolve an audio URL immediately before playback and hand it to Music Assistant's normal HTTP stream pipeline.
+
+## Limitations
+
+The VK audio API used by the dependency is unofficial and may change or reject a token. A paid VK Music subscription does not guarantee every endpoint or track is available to a third-party client. This repo's CI confirms dependency installation and provider/setup-flow import, but does not verify a live VK account or real playback. Access-denied, expired-session and unavailable-track responses must not be bypassed. No password capture, DRM circumvention or audio-file download is implemented.
