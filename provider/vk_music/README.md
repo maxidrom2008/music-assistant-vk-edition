@@ -4,7 +4,7 @@ VK Music provider for Music Assistant Server 2.10.9.
 
 ## Setup
 
-In Music Assistant open **Settings → Music Providers → Add provider → VK Music**. Enter an existing VK access token with the required VK Audio access and the matching client User-Agent. The token is entered through a secure setup field and stored in provider setup data. The integration never asks for the VK password, SMS/2FA code or browser cookies.
+In Music Assistant open **Settings → Music Providers → Add provider → VK Music**. Enter your VK phone/email and password. The setup flow then follows the challenge returned by VK: SMS code, last digits of a verification call, an app code, or a code/device approval for other methods. On success, the flow stores only the VK access token and the User-Agent supplied by vkpymusic's mobile client. The password and one-time codes are not persisted.
 
 ## Implemented
 
@@ -20,6 +20,12 @@ In Music Assistant open **Settings → Music Providers → Add provider → VK M
 ## Browsing behavior
 
 Personal tracks and playlist collections are fetched in pages of up to 100 items. A next-page folder is shown when a full page is returned. Recently played uses the `Service.get_recent_songs_async()` catalog method shipped by `vkpymusic` 4.0.2; the private VK catalog may return an empty list or an access error depending on the account.
+
+## Authorization behavior
+
+The setup flow uses vkpymusic 4.0.2's async request transport, but not its TokenReceiver handlers: those open Selenium/Chrome for CAPTCHA and set `force_sms=1`. The VK request no longer forces SMS; the flow follows the returned `validation_type` and repeats the request after each user response.
+
+The older CAPTCHA response containing `captcha_sid` and `captcha_img` can be shown as an image with an answer field. The newer browser-based VK ID CAPTCHA returns `redirect_uri` and requires a browser-generated `success_token`. This flow currently reports that challenge as unsupported rather than starting a headless or hidden browser. A successful live login has not yet been verified against the user's VK account.
 
 ## Limitations
 
