@@ -1,113 +1,297 @@
 """VK Music provider for Music Assistant 2.10.9.
 
-Uses a user-supplied VK access token and VKpyMusic's asynchronous API client.
-No password collection, credential automation, media downloads, or DRM bypass.
+Uses an existing VK access token. It never collects passwords, automates login,
+downloads audio to disk, or bypasses service access controls.
 """
 from __future__ import annotations
 
+import base64
 from typing import TYPE_CHECKING
 
 from music_assistant.models.music_provider import MusicProvider
 from music_assistant_models.enums import ContentType, MediaType, ProviderFeature, StreamType
 from music_assistant_models.errors import LoginFailed, MediaNotFoundError, SetupFailedError
-from music_assistant_models.media_items import AudioFormat, ItemMapping, ProviderMapping, SearchResults, Track, UniqueList
+from music_assistant_models.media_items import (
+    Album,
+    Artist,
+    BrowseFolder,
+    ItemMapping,
+    Playlist,
+    ProviderMapping,
+    SearchResults,
+    Track,
+    UniqueList,
+)
 from music_assistant_models.streamdetails import StreamDetails
 from vkpymusic import Service
+from vkpymusic.models import Playlist as VKPlaylist
 from vkpymusic.vk_api import VkApiException
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from music_assistant import MusicAssistant
     from music_assistant.models import ProviderInstanceType
     from music_assistant_models.config_entries import ProviderConfig
+    from music_assistant_models.media_items import MediaItemType
     from music_assistant_models.provider import ProviderManifest
 
 CONF_TOKEN = "token"
 CONF_USER_AGENT = "user_agent"
-SUPPORTED_FEATURES = {ProviderFeature.SEARCH}
+SUPPORTED_FEATURES = {
+    ProviderFeature.SEARCH,
+    ProviderFeature.BROWSE,
+    ProviderFeature.ARTIST_ALBUMS,
+    ProviderFeature.ARTIST_TOPTRACKS,
+}
 
-async def setup(mass: MusicAssistant, manifest: ProviderManifest, config: ProviderConfig) -> ProviderInstanceType:
-    """Initialize the provider after validating the saved VK token."""
+
+async def setup(
+    mass: MusicAssistant, manifest: ProviderManifest, config: ProviderConfig
+) -> ProviderInstanceType:
+    """Initialize the provider and its secure account configuration."""
     return VKMusicProvider(mass, manifest, config, SUPPORTED_FEATURES)
 
+
 class VKMusicProvider(MusicProvider):
-    """VK Music catalog search and entitled audio playback."""
+    """VK track search, artist discovery and playlist/album browsing."""
 
     _service: Service
 
     @property
     def is_streaming_provider(self) -> bool:
+        """VK is an online music provider."""
         return True
 
     @property
     def max_concurrent_streams(self) -> int:
-        """Keep concurrency conservative for the account-backed source."""
+        """Use a conservative per-account stream limit."""
         return 2
 
     async def handle_async_init(self) -> None:
-        """Create the VK API client and verify the supplied token."""
+        """Create the API client and validate the saved token."""
         token = str(self.get_setup_value(CONF_TOKEN) or "")
         user_agent = str(self.get_setup_value(CONF_USER_AGENT) or "")
         if not token or not user_agent:
-            raise LoginFailed("VK access token and user-agent are required")
+            raise LoginFailed("VK access token and User-Agent are required")
         self._service = Service(user_agent=user_agent, token=token)
         try:
             valid = await self._service.is_token_valid_async()
         except Exception as err:
-            raise SetupFailedError(f"Could not validate VK token: {type(err).__name__}") from err
+            raise SetupFailedError(
+                f"Could not validate VK credentials ({type(err).__name__})"
+            ) from err
         if not valid:
             raise LoginFailed("VK access token is invalid or expired")
 
-    async def search(self, search_query: str, media_types: list[MediaType], limit: int = 5) -> SearchResults:
-        """Search VK audio tracks."""
-        result = SearchResults()
-        if MediaType.TRACK not in media_types or not search_query.strip():
-            return result
+    def _mapping(self, item_id: str) -> set[ProviderMapping]:
+        return {
+            ProviderMapping(
+                item_id=item_id,
+                provider_domain=self.domain,
+                provider_instance=self.instance_id,
+            )
+        }
+
+    @staticmethod
+    def _encode_collection_id(owner_id: int | str, playlist_id: int | str, access_key: str) -> str:
+        """Encode VK collection ids without leaking delimiters into item identifiers."""
+        key = base64.urlsafe_b64encode(access_key.encode()).decode().rstrip("=")
+        return f"{owner_id}:{playlist_id}:{key}"
+
+    @staticmethod
+    def _decode_collection_id(item_id: str) -> tuple[int, int, str]:
+        """Decode owner, playlist and VK access key."""
         try:
-            songs = await self._service.search_songs_by_text_async(search_query.strip(), count=min(max(limit, 1), 30))
-        except VkApiException as err:
-            self.logger.warning("VK search failed (code %s)", getattr(err, "error_code", "unknown"))
-            return result
-        except Exception:
-            self.logger.exception("VK search request failed")
-            return result
-        result.tracks = [self._parse_song(song) for song in songs if song.track_id and song.owner_id]
-        return result
+            owner, playlist, key = item_id.split(":", 2)
+            key += "=" * (-len(key) % 4)
+            return int(owner), int(playlist), base64.urlsafe_b64decode(key).decode()
+        except (ValueError, UnicodeDecodeError) as err:
+            raise MediaNotFoundError("Invalid VK collection identifier") from err
 
     def _parse_song(self, song) -> Track:
-        """Map a VK song to a Music Assistant track without exposing its audio URL."""
+        """Convert VK audio metadata into a Music Assistant track."""
         item_id = f"{song.owner_id}_{song.track_id}"
+        artist_items = UniqueList(
+            [
+                ItemMapping(
+                    item_id=f"artist:{song.artist.casefold()}",
+                    provider=self.instance_id,
+                    name=song.artist,
+                    media_type=MediaType.ARTIST,
+                )
+            ]
+            if song.artist
+            else []
+        )
         return Track(
             item_id=item_id,
             provider=self.instance_id,
             name=song.title or "Unknown title",
-            artists=UniqueList(\n                [ItemMapping(item_id=f"artist:{song.artist.casefold()}", provider=self.instance_id, name=song.artist, media_type=MediaType.ARTIST)]\n                if song.artist else []\n            ),
-            duration=int(song.duration or 0),
-            provider_mappings={
-                ProviderMapping(
-                    item_id=item_id,
-                    provider_domain=self.domain,
-                    provider_instance=self.instance_id,
-                )
-            },
+            artists=artist_items,
+            duration=max(0, int(song.duration or 0)),
+            provider_mappings=self._mapping(item_id),
         )
 
+    def _parse_artist(self, name: str) -> Artist:
+        """Represent a VK artist by a normalized search identity."""
+        item_id = f"artist:{name.casefold()}"
+        return Artist(
+            item_id=item_id,
+            provider=self.instance_id,
+            name=name,
+            provider_mappings=self._mapping(item_id),
+        )
+
+    def _parse_vk_collection(self, entry, media_type: MediaType) -> Album | Playlist:
+        """Convert the VK library's playlist-shaped album and playlist objects."""
+        item_id = self._encode_collection_id(entry.owner_id, entry.playlist_id, entry.access_key)
+        mapping = self._mapping(item_id)
+        if media_type == MediaType.ALBUM:
+            album = Album(
+                item_id=item_id,
+                provider=self.instance_id,
+                name=entry.title or "Untitled album",
+                provider_mappings=mapping,
+            )
+            if entry.photo:
+                album.metadata.images = []
+                # The API exposes a direct cover URL; let MA resolve/use it via metadata elsewhere.
+            return album
+        playlist = Playlist(
+            item_id=item_id,
+            provider=self.instance_id,
+            name=entry.title or "Untitled playlist",
+            owner=str(entry.owner_id),
+            provider_mappings=mapping,
+        )
+        if entry.description:
+            playlist.metadata.description = entry.description
+        return playlist
+
+    async def search(
+        self, search_query: str, media_types: list[MediaType], limit: int = 5
+    ) -> SearchResults:
+        """Search VK tracks, playlists and albums; derive artists from track matches."""
+        results = SearchResults()
+        query = search_query.strip()
+        if not query:
+            return results
+        safe_limit = min(max(limit, 1), 30)
+        try:
+            if MediaType.TRACK in media_types or MediaType.ARTIST in media_types:
+                songs = await self._service.search_songs_by_text_async(query, count=safe_limit)
+                results.tracks = [self._parse_song(song) for song in songs]
+                if MediaType.ARTIST in media_types:
+                    seen: set[str] = set()
+                    artists: list[Artist] = []
+                    for song in songs:
+                        if not song.artist:
+                            continue
+                        key = song.artist.casefold()
+                        if key not in seen:
+                            seen.add(key)
+                            artists.append(self._parse_artist(song.artist))
+                    results.artists = artists[:safe_limit]
+            if MediaType.ALBUM in media_types:
+                albums = await self._service.search_albums_by_text_async(query, count=safe_limit)
+                results.albums = [
+                    self._parse_vk_collection(item, MediaType.ALBUM) for item in albums
+                ]
+            if MediaType.PLAYLIST in media_types:
+                playlists = await self._service.search_playlists_by_text_async(query, count=safe_limit)
+                results.playlists = [
+                    self._parse_vk_collection(item, MediaType.PLAYLIST) for item in playlists
+                ]
+        except VkApiException as err:
+            self.logger.warning("VK search request denied or failed (code %s)", getattr(err, "error_code", "unknown"))
+        except Exception:
+            self.logger.exception("Unexpected VK search failure")
+        return results
+
     async def get_track(self, prov_track_id: str) -> Track:
-        """Resolve a VK track identifier to its current metadata."""
-        owner_id, separator, track_id = prov_track_id.partition("_")
-        if not separator or not owner_id or not track_id:
+        """Retrieve current metadata for a VK track."""
+        owner, separator, track = prov_track_id.partition("_")
+        if not separator or not owner or not track:
             raise MediaNotFoundError(f"Invalid VK track id: {prov_track_id}")
-        songs = await self._service.get_songs_by_id_async([f"{owner_id}_{track_id}"])
+        songs = await self._service.get_songs_by_id_async([f"{owner}_{track}"])
         if not songs:
             raise MediaNotFoundError(f"VK track not found: {prov_track_id}")
         return self._parse_song(songs[0])
 
+    async def get_album(self, prov_album_id: str) -> Album:
+        """Resolve an album selected from VK search."""
+        owner, playlist, _key = self._decode_collection_id(prov_album_id)
+        return Album(
+            item_id=prov_album_id,
+            provider=self.instance_id,
+            name=f"VK album {playlist}",
+            provider_mappings=self._mapping(prov_album_id),
+        )
+
+    async def get_playlist(self, prov_playlist_id: str) -> Playlist:
+        """Resolve a playlist selected from VK search."""
+        owner, playlist, _key = self._decode_collection_id(prov_playlist_id)
+        return Playlist(
+            item_id=prov_playlist_id,
+            provider=self.instance_id,
+            name=f"VK playlist {playlist}",
+            owner=str(owner),
+            provider_mappings=self._mapping(prov_playlist_id),
+        )
+
+    async def get_album_tracks(self, prov_album_id: str) -> list[Track]:
+        """Fetch the tracks belonging to a VK album."""
+        owner, playlist, access_key = self._decode_collection_id(prov_album_id)
+        songs = await self._service.get_songs_by_playlist_id_async(
+            owner, playlist, access_key, count=100, offset=0
+        )
+        return [self._parse_song(song) for song in songs]
+
+    async def get_playlist_tracks(self, prov_playlist_id: str, page: int = 0) -> list[Track]:
+        """Fetch one page of a VK playlist."""
+        owner, playlist, access_key = self._decode_collection_id(prov_playlist_id)
+        songs = await self._service.get_songs_by_playlist_id_async(
+            owner, playlist, access_key, count=100, offset=page * 100
+        )
+        return [self._parse_song(song) for song in songs]
+
+    async def get_artist_albums(self, prov_artist_id: str) -> list[Album]:
+        """Search VK albums using the artist name."""
+        name = prov_artist_id.removeprefix("artist:")
+        entries = await self._service.search_albums_by_text_async(name, count=30)
+        return [self._parse_vk_collection(item, MediaType.ALBUM) for item in entries]
+
+    async def get_artist_toptracks(self, prov_artist_id: str, limit: int = 25) -> list[Track]:
+        """Search for the artist's tracks."""
+        name = prov_artist_id.removeprefix("artist:")
+        songs = await self._service.search_songs_by_text_async(name, count=min(limit, 30))
+        return [self._parse_song(song) for song in songs]
+
+    async def browse(self, path: str) -> Sequence[MediaItemType | ItemMapping | BrowseFolder]:
+        """Browse the authenticated user's VK playlists."""
+        if path.rstrip("/").endswith("://") or path in ("", f"{self.instance_id}://"):
+            return [
+                BrowseFolder(
+                    item_id="my_playlists",
+                    provider=self.instance_id,
+                    name="My VK playlists",
+                )
+            ]
+        if path.rstrip("/").endswith("my_playlists") or path.endswith("://my_playlists"):
+            user = await self._service.get_user_info_async()
+            entries = await self._service.get_playlists_by_userid_async(user.userid, count=100)
+            return [
+                self._parse_vk_collection(item, MediaType.PLAYLIST) for item in entries
+            ]
+        return []
+
     async def get_stream_details(self, item_id: str, media_type: MediaType) -> StreamDetails:
-        """Resolve a fresh authorized audio URL immediately before playback."""
-        owner_id, separator, track_id = item_id.partition("_")
-        if not separator or not owner_id or not track_id:
+        """Resolve a fresh stream URL immediately before playback."""
+        owner, separator, track = item_id.partition("_")
+        if not separator or not owner or not track:
             raise MediaNotFoundError(f"Invalid VK track id: {item_id}")
         try:
-            songs = await self._service.get_songs_by_id_async([f"{owner_id}_{track_id}"])
+            songs = await self._service.get_songs_by_id_async([f"{owner}_{track}"])
         except VkApiException as err:
             if getattr(err, "error_code", None) in (5, 201):
                 raise LoginFailed("VK denied access to this audio; check account entitlement") from err
@@ -120,7 +304,7 @@ class VKMusicProvider(MusicProvider):
             provider=self.instance_id,
             item_id=item_id,
             media_type=MediaType.TRACK,
-            audio_format=AudioFormat(content_type=content_type or ContentType.UNKNOWN),
+            audio_format=AudioFormat(content_type=content_type),
             stream_type=StreamType.HTTP,
             path=url,
             can_seek=True,
