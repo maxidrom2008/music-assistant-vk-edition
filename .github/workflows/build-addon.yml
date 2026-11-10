@@ -44,4 +44,4 @@ jobs:
           file: ./music_assistant_vk/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/music-assistant-vk-edition:0.2.0
+          tags: ghcr.io/${{ github.repository_owner }}/music-assistant-vk-edition:0.2.1
