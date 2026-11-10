@@ -165,10 +165,16 @@ async def _authenticate(session: SetupSession, login: str, password: str) -> str
                 continue
 
             if error == "invalid_request" and pending_validation is not None:
+                validation_type = str(pending_validation.get("validation_type") or "")
+                validation_errors = (
+                    {"base": "VK пока не подтвердил вход или отклонил код. Проверьте приложение и попробуйте ещё раз."}
+                    if _validation_mode(validation_type) == "approval_or_code"
+                    else {"code": "VK не принял код. Проверьте его и попробуйте ещё раз."}
+                )
                 code, _approved = await _prompt_validation(
                     session,
                     pending_validation,
-                    errors={"code": "VK не принял код. Проверьте его и попробуйте ещё раз."},
+                    errors=validation_errors,
                 )
                 continue
 
