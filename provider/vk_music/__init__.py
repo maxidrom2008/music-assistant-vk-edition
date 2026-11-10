@@ -211,8 +211,8 @@ class VKMusicProvider(MusicProvider):
                     results.artists = artists[:safe_limit]
             except VkApiException as err:
                 self.logger.warning("VK track search denied or failed (code %s)", getattr(err, "error_code", "unknown"))
-            except Exception:
-                self.logger.exception("Unexpected VK track search failure")
+            except Exception as err:
+                self.logger.warning("Unexpected VK track search failure (%s)", type(err).__name__)
         if MediaType.ALBUM in media_types:
             try:
                 albums = await self._service.search_albums_by_text_async(query, count=safe_limit)
@@ -221,8 +221,8 @@ class VKMusicProvider(MusicProvider):
                 ]
             except VkApiException as err:
                 self.logger.warning("VK album search denied or failed (code %s)", getattr(err, "error_code", "unknown"))
-            except Exception:
-                self.logger.exception("Unexpected VK album search failure")
+            except Exception as err:
+                self.logger.warning("Unexpected VK album search failure (%s)", type(err).__name__)
         if MediaType.PLAYLIST in media_types:
             try:
                 playlists = await self._service.search_playlists_by_text_async(query, count=safe_limit)
@@ -231,8 +231,8 @@ class VKMusicProvider(MusicProvider):
                 ]
             except VkApiException as err:
                 self.logger.warning("VK playlist search denied or failed (code %s)", getattr(err, "error_code", "unknown"))
-            except Exception:
-                self.logger.exception("Unexpected VK playlist search failure")
+            except Exception as err:
+                self.logger.warning("Unexpected VK playlist search failure (%s)", type(err).__name__)
         return results
 
     async def get_track(self, prov_track_id: str) -> Track:
@@ -358,5 +358,4 @@ class VKMusicProvider(MusicProvider):
             path=url,
             can_seek=True,
             allow_seek=True,
-            is_realtime=True,
         )
