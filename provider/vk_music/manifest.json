@@ -1,8 +1,11 @@
 {
   "type": "music",
   "domain": "vk_music",
-  "name": "VK Music (experimental)",
-  "description": "Experimental VK Music provider for Music Assistant VK Edition.",
+  "stage": "experimental",
+  "name": "VK Music",
+  "description": "Search and stream VK Music using your own account token.",
   "codeowners": ["@maxidrom2008"],
-  "requirements": []
+  "requirements": ["vkpymusic==4.0.2"],
+  "documentation": "https://github.com/maxidrom2008/music-assistant-vk-edition",
+  "multi_instance": false
 }
