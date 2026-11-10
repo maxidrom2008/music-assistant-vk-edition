@@ -3,7 +3,7 @@ name: Build HAOS app image
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/vk-provider-implementation]
+    branches: [main]
     paths:
       - "music_assistant_vk/**"
       - "provider/**"
@@ -37,6 +37,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Read app version
+        id: version
+        run: |
+          VERSION=$(sed -n 's/^version: *["\x27]*\([^"\x27]*\)["\x27]*$/\1/p' music_assistant_vk/config.yaml | head -n1)
+          if [ -z "$VERSION" ]; then
+            echo "Could not read version from music_assistant_vk/config.yaml" >&2
+            exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -44,4 +54,4 @@ jobs:
           file: ./music_assistant_vk/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/music-assistant-vk-edition:0.2.1
+          tags: ghcr.io/${{ github.repository_owner }}/music-assistant-vk-edition:${{ steps.version.outputs.value }}
