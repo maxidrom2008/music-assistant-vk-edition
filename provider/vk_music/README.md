@@ -1,8 +1,15 @@
-# VK Music provider scaffold
+# VK Music provider
 
-This is only a loader/build scaffold. It intentionally exposes no search, browse,
-library or playback features. Do not treat it as a working VK integration.
+Adds VK track search and authorized playback to Music Assistant 2.10.9.
 
-The next implementation step is to validate a permitted VK authentication flow
-and catalog access, then add MA 2.10.9-compatible setup and media methods.
-Never commit secrets or bypass DRM, subscription checks or access controls.
+## Setup
+Add **VK Music** in Settings → Music Providers. Supply an existing VK access token permitted to access VK audio and its matching client User-Agent. Music Assistant stores secure setup values in its provider configuration. This integration never asks for a VK password or performs password/2FA login.
+
+A paid subscription does not guarantee that every token type or API method is accepted by VK.
+
+## Current scope
+- Search tracks.
+- Resolve a fresh audio URL at playback time.
+- Return stream details to Music Assistant; audio URLs are not embedded in catalog results.
+
+Artist/album/playlist browsing and library sync are not advertised yet. VK may deny access to individual tracks or return expiring URLs. No DRM, subscription, region, or access-control bypass is implemented; this provider does not download or store audio.
