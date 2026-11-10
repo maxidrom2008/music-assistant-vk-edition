@@ -117,7 +117,7 @@ class VKMusicProvider(MusicProvider):
             packed = item_id.removeprefix("vk:")
             packed += "=" * (-len(packed) % 4)
             payload = json.loads(base64.urlsafe_b64decode(packed).decode())
-            if not all(payload.get(key) for key in ("owner", "playlist", "key")):
+            if not payload.get("owner") or not payload.get("playlist") or "key" not in payload:
                 raise ValueError("missing collection fields")
             return payload
         except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as err:
