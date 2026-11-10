@@ -23,4 +23,4 @@ async def run_setup(session: SetupSession) -> None:
             await session.finish(data)
             return
         except SetupFlowError as err:
-            errors = {"base": err}
+            errors = {"base": str(err)}
