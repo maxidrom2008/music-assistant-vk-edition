@@ -155,13 +155,9 @@ async def _authenticate(session: SetupSession, login: str, password: str) -> str
                 sid = str(details.get("validation_sid") or "")
                 pending_validation = details
 
-                # vkpymusic calls auth.validatePhone for phone-based methods.
-                # App codes and push approvals do not need an SMS request.
-                kind = validation_type.casefold()
-                phone_based = not any(
-                    part in kind for part in ("app", "push", "max", "approve", "confirm")
-                )
-                if sid and sid != requested_validation_sid and phone_based:
+                # Match TokenReceiver's behavior: ask VK to start the
+                # challenge for every validation_sid, regardless of channel.
+                if sid and sid != requested_validation_sid:
                     await request_vk_validation(sid)
                     requested_validation_sid = sid
 
