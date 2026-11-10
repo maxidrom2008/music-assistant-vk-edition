@@ -1,56 +1,51 @@
 # Music Assistant — VK Edition
 
-> Work in progress. This repository does not yet contain a working VK Music provider or an installable Home Assistant app.
+Отдельная сборка Music Assistant Server **2.10.9** для Home Assistant OS с дополнительным источником VK Music. Оригинальная установка и её каталог данных не меняются.
 
-A separate Home Assistant OS app build of Music Assistant Server, initially targeting **2.10.9 / amd64**, with an additional VK Music music-source provider. The stock Music Assistant app and its data must remain untouched during development and testing.
+## Состояние
 
-## Goals
+- [x] Отдельная HAOS app с собственным slug и образом.
+- [x] Провайдер VK Music обнаруживается Music Assistant.
+- [x] Форма подключения в интерфейсе Music Assistant: существующий VK access token и соответствующий User-Agent.
+- [x] Поиск треков, артистов, альбомов и плейлистов.
+- [x] Просмотр собственных плейлистов VK, получение треков альбомов/плейлистов.
+- [x] Получение свежего URL аудио при начале воспроизведения через стандартный поток Music Assistant.
+- [x] Сборка образа 0.2.0 и проверка импорта провайдера/setup-flow в контейнере.
+- [ ] Проверка реальной авторизации, поиска и непрерывного воспроизведения на пользовательском аккаунте VK: это требует действующего токена и проверки на самом HAOS.
 
-- Search VK Music tracks, artists, albums and playlists.
-- Browse a user's VK Music library where the account/API permits it.
-- Resolve and play tracks through Music Assistant's normal stream pipeline.
-- Keep credentials in Music Assistant's encrypted provider setup data; never commit tokens, cookies, passwords or device identifiers.
-- Package the server as a separate HAOS app/repository so it can be tested side-by-side before any migration.
+## Установка / обновление
 
-## Compatibility baseline
+Репозиторий HAOS app: `https://github.com/maxidrom2008/music-assistant-vk-edition`
 
-The provider API must match the official Music Assistant **2.10.9** source tree. The provider will follow that release's `_demo_music_provider` template and its setup-flow contract. The official 2.10.9 provider tree does not include a VK provider.
+Папка app: `music_assistant_vk`  
+Slug: `music_assistant_vk`  
+Образ: `ghcr.io/maxidrom2008/music-assistant-vk-edition:0.2.0`  
+Архитектура: amd64.
 
-The HAOS app packaging will be based on the official `music-assistant/home-assistant-addon` configuration, with a separate app slug and data directory. The official app's host-networking requirements and permissions need to be preserved where necessary for player discovery.
+Добавь или обнови репозиторий в магазине приложений Home Assistant, установи/обнови **Music Assistant VK Edition** до 0.2.0 и запусти его. Поскольку сервер использует host networking и потоковый порт 8097, оригинальный Music Assistant Server должен быть остановлен на время работы VK Edition. Не удаляй оригинальное приложение и его данные.
 
-## VK API status and limitations
+## Подключение VK
 
-VK's music-catalog endpoints are not documented as a public, stable API. Third-party technical documentation describes internal endpoints used by VK clients, but those interfaces, authentication requirements, stream URLs and subscription checks can change without notice. This project must not bypass DRM, subscription checks, geographic restrictions or other access controls. A valid account/subscription does not guarantee that an unofficial client is supported by VK.
+В открывшемся Music Assistant: **Settings → Music Providers → Add provider → VK Music**. Форма запрашивает:
+- существующий VK access token, которому разрешён доступ к VK Audio;
+- User-Agent того VK-клиента, с которым получен/используется этот токен.
 
-Before implementing playback, verify that permitted account access can provide:
-1. catalog search and metadata;
-2. playlist/library access;
-3. a playable stream URL for entitled tracks;
-4. stable error handling for expired sessions and unavailable content.
+Токен вводится только в защищённую форму Music Assistant и хранится в setup data провайдера; пароль VK, код SMS/2FA и cookies интеграция не запрашивает. Не публикуй токен в GitHub, логах, скриншотах или чате.
 
-If only metadata works, the provider must not advertise playback as supported.
+**Важно:** VK не гарантирует стабильность внутренних API для сторонних клиентов. Наличие VK Music подписки не гарантирует, что конкретный токен/API-метод даст доступ к каждому треку. Эта сборка проверена на импорт и сборку, но авторизация/поиск/аудио на реальном аккаунте ещё не подтверждены. Ошибка доступа от VK не обходится.
 
-## Development stages
+## Что реализовано
 
-1. Verify the exact MA 2.10.9 provider loader, manifest, setup flow and stream contract.
-2. Validate the VK authentication/API approach without placing credentials in source code or CI.
-3. Implement and test search and metadata.
-4. Implement stream resolution only if it works without bypassing access controls.
-5. Build a separate amd64 HAOS app image and test it without changing the stock app or its data.
-6. Document backup, install, rollback and upgrade steps.
+Поиск по трекам, исполнителям (по исполнителям из результатов поиска треков), альбомам и плейлистам; базовый просмотр собственных плейлистов; просмотр треков коллекций; обновление ссылки потока перед воспроизведением. Синхронизация всей медиатеки, редактирование плейлистов, обложки и расширенные функции библиотеки пока не заявлены.
 
-## Security
+## Ограничения и безопасность
 
-- Never put secrets in Git, issues, logs, screenshots or GitHub Actions artifacts.
-- Do not request or store a VK password, SMS/2FA code or browser cookies in this repository.
-- Use only the minimum account data needed and keep all authentication local to the Music Assistant instance.
-- Keep the stock Music Assistant app installed and backed up until the custom app passes testing.
+- Только уже существующий токен и User-Agent; никаких запросов пароля VK и обхода CAPTCHA/2FA.
+- Нет обхода DRM, подписки, региональных ограничений или прав доступа.
+- Нет загрузки музыкальных файлов на диск со стороны провайдера.
+- Ссылки потоков могут истекать; провайдер запрашивает их повторно при старте трека.
+- Треки, к которым VK отвечает отказом (например, access denied), не воспроизводятся.
 
-## Current status
+## Совместимость
 
-- [x] Private project repository created.
-- [x] MA Server 2.10.9 provider template inspected.
-- [x] Official HAOS app configuration inspected.
-- [ ] VK authentication and API feasibility verified.
-- [ ] VK provider implemented.
-- [ ] Separate HAOS app image built and tested.
+Зафиксированная базовая версия: Music Assistant Server 2.10.9, HAOS app для amd64. Изменения VK Edition устанавливаются отдельным приложением с отдельным каталогом данных; исходное приложение не модифицируется.
