@@ -14,6 +14,7 @@ from music_assistant_models.enums import ContentType, ImageType, MediaType, Prov
 from music_assistant_models.errors import LoginFailed, MediaNotFoundError, SetupFailedError
 from music_assistant_models.media_items import (
     Album,
+    AudioFormat,
     Artist,
     BrowseFolder,
     ItemMapping,
