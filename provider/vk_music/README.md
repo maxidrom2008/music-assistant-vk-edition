@@ -25,7 +25,7 @@ Personal tracks and playlist collections are fetched in pages of up to 100 items
 
 The setup flow uses vkpymusic 4.0.2's async request transport, but not its TokenReceiver handlers: those open Selenium/Chrome for CAPTCHA and set `force_sms=1`. The VK request no longer forces SMS; the flow follows the returned `validation_type` and repeats the request after each user response.
 
-The older CAPTCHA response containing `captcha_sid` and `captcha_img` can be shown as an image with an answer field. The newer browser-based VK ID CAPTCHA returns `redirect_uri` and requires a browser-generated `success_token`. This flow currently reports that challenge as unsupported rather than starting a headless or hidden browser. A successful live login has not yet been verified against the user's VK account.
+The older CAPTCHA response containing `captcha_sid` and `captcha_img` can be shown as an image with an answer field. The newer browser-based VK ID CAPTCHA returns `redirect_uri` and requires a browser-generated `success_token`. This flow does not start a headless or hidden browser; it presents a secure token-entry fallback for an access token obtained externally. A successful live login has not yet been verified against the user's VK account.
 
 ## Limitations
 
