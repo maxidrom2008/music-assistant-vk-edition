@@ -325,8 +325,9 @@ class VKMusicProvider(MusicProvider):
         return [self._parse_song(song) for song in songs]
 
     async def browse(self, path: str) -> Sequence[MediaItemType | ItemMapping | BrowseFolder]:
-        """Browse the authenticated user's VK playlists."""
-        if path.rstrip("/").endswith("://") or path in ("", f"{self.instance_id}://"):
+        """Browse personal VK library, playlists and recently played tracks."""
+        browse_path = path.rsplit("://", 1)[-1].strip("/")
+        if not browse_path:
             return [
                 BrowseFolder(
                     item_id="my_tracks",
@@ -338,19 +339,72 @@ class VKMusicProvider(MusicProvider):
                     provider=self.instance_id,
                     name="Мои плейлисты",
                 ),
+                BrowseFolder(
+                    item_id="recently_played",
+                    provider=self.instance_id,
+                    name="Недавно прослушанное",
+                ),
             ]
-        if path.rstrip("/").endswith("my_tracks") or path.endswith("://my_tracks"):
+
+        if browse_path == "recently_played":
+            get_recent = getattr(self._service, "get_recent_songs_async", None)
+            if not callable(get_recent):
+                self.logger.warning(
+                    "Recently played is unavailable in the installed vkpymusic version"
+                )
+                return []
+            songs = await get_recent()
+            return [self._parse_song(song) for song in songs]
+
+        if browse_path == "my_tracks" or browse_path.startswith("my_tracks:"):
+            try:
+                offset = int(browse_path.partition(":")[2] or "0")
+            except ValueError as err:
+                raise MediaNotFoundError("Invalid VK library page") from err
+            if offset < 0:
+                raise MediaNotFoundError("Invalid VK library page")
             user = await self._service.get_user_info_async()
             songs = await self._service.get_songs_by_userid_async(
-                user.userid, count=100, offset=0
+                user.userid, count=100, offset=offset
             )
-            return [self._parse_song(song) for song in songs]
-        if path.rstrip("/").endswith("my_playlists") or path.endswith("://my_playlists"):
+            items: list[MediaItemType | ItemMapping | BrowseFolder] = [
+                self._parse_song(song) for song in songs
+            ]
+            if len(songs) == 100:
+                next_offset = offset + 100
+                items.append(
+                    BrowseFolder(
+                        item_id=f"my_tracks:{next_offset}",
+                        provider=self.instance_id,
+                        name=f"Следующие 100 треков ({next_offset + 1}–{next_offset + 100})",
+                    )
+                )
+            return items
+
+        if browse_path == "my_playlists" or browse_path.startswith("my_playlists:"):
+            try:
+                offset = int(browse_path.partition(":")[2] or "0")
+            except ValueError as err:
+                raise MediaNotFoundError("Invalid VK playlist page") from err
+            if offset < 0:
+                raise MediaNotFoundError("Invalid VK playlist page")
             user = await self._service.get_user_info_async()
-            entries = await self._service.get_playlists_by_userid_async(user.userid, count=100)
-            return [
+            entries = await self._service.get_playlists_by_userid_async(
+                user.userid, count=100, offset=offset
+            )
+            items = [
                 self._parse_vk_collection(item, MediaType.PLAYLIST) for item in entries
             ]
+            if len(entries) == 100:
+                next_offset = offset + 100
+                items.append(
+                    BrowseFolder(
+                        item_id=f"my_playlists:{next_offset}",
+                        provider=self.instance_id,
+                        name=f"Следующие 100 плейлистов ({next_offset + 1}–{next_offset + 100})",
+                    )
+                )
+            return items
         return []
 
     async def get_stream_details(self, item_id: str, media_type: MediaType) -> StreamDetails:
