@@ -5,13 +5,12 @@ No password collection, credential automation, media downloads, or DRM bypass.
 """
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from music_assistant.models.music_provider import MusicProvider
 from music_assistant_models.enums import ContentType, MediaType, ProviderFeature, StreamType
 from music_assistant_models.errors import LoginFailed, MediaNotFoundError, SetupFailedError
-from music_assistant_models.media_items import AudioFormat, ProviderMapping, SearchResults, Track
+from music_assistant_models.media_items import AudioFormat, ItemMapping, ProviderMapping, SearchResults, Track, UniqueList
 from music_assistant_models.streamdetails import StreamDetails
 from vkpymusic import Service
 from vkpymusic.vk_api import VkApiException
@@ -81,7 +80,7 @@ class VKMusicProvider(MusicProvider):
             item_id=item_id,
             provider=self.instance_id,
             name=song.title or "Unknown title",
-            artists=[song.artist] if song.artist else [],
+            artists=UniqueList(\n                [ItemMapping(item_id=f"artist:{song.artist.casefold()}", provider=self.instance_id, name=song.artist, media_type=MediaType.ARTIST)]\n                if song.artist else []\n            ),
             duration=int(song.duration or 0),
             provider_mappings={
                 ProviderMapping(
