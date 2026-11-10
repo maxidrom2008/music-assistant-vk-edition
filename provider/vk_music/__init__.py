@@ -337,26 +337,39 @@ class VKMusicProvider(MusicProvider):
 
     async def get_stream_details(self, item_id: str, media_type: MediaType) -> StreamDetails:
         """Resolve a fresh stream URL immediately before playback."""
-        owner, separator, track = item_id.partition("_")
-        if not separator or not owner or not track:
-            raise MediaNotFoundError(f"Invalid VK track id: {item_id}")
         try:
-            songs = await self._service.get_songs_by_id_async([f"{owner}_{track}"])
-        except VkApiException as err:
-            if getattr(err, "error_code", None) in (5, 201):
-                raise LoginFailed("VK denied access to this audio; check account entitlement") from err
+            owner, separator, track = item_id.partition("_")
+            if not separator or not owner or not track:
+                raise MediaNotFoundError(f"Invalid VK track id: {item_id}")
+            try:
+                songs = await self._service.get_songs_by_id_async([f"{owner}_{track}"])
+            except VkApiException as err:
+                if getattr(err, "error_code", None) in (5, 201):
+                    raise LoginFailed("VK denied access to this audio; check account entitlement") from err
+                raise
+            if not songs or not songs[0].url:
+                raise MediaNotFoundError(f"VK did not provide an accessible stream for {item_id}")
+            url = songs[0].url
+            content_type = ContentType.try_parse(url.split("?", 1)[0])
+            self.logger.debug(
+                "VK stream metadata resolved for %s (content_type=%s)",
+                item_id,
+                content_type,
+            )
+            return StreamDetails(
+                provider=self.instance_id,
+                item_id=item_id,
+                media_type=MediaType.TRACK,
+                audio_format=AudioFormat(content_type=content_type),
+                stream_type=StreamType.HTTP,
+                path=url,
+                can_seek=True,
+                allow_seek=True,
+            )
+        except Exception as err:
+            self.logger.exception(
+                "VK playback stream resolution failed for %s (%s)",
+                item_id,
+                type(err).__name__,
+            )
             raise
-        if not songs or not songs[0].url:
-            raise MediaNotFoundError(f"VK did not provide an accessible stream for {item_id}")
-        url = songs[0].url
-        content_type = ContentType.try_parse(url.split("?", 1)[0])
-        return StreamDetails(
-            provider=self.instance_id,
-            item_id=item_id,
-            media_type=MediaType.TRACK,
-            audio_format=AudioFormat(content_type=content_type),
-            stream_type=StreamType.HTTP,
-            path=url,
-            can_seek=True,
-            allow_seek=True,
-        )
