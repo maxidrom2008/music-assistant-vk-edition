@@ -78,7 +78,7 @@ async def request_vk_token(
 
 
 async def request_vk_validation(sid: str) -> dict[str, Any]:
-    """Ask VK to send/start the selected phone-based validation challenge."""
+    """Ask VK to start the selected validation challenge for its session id."""
     request = VkApiRequestBuilder.build_req_2fa_code(
         client=VkMobileClient,
         sid=sid,
