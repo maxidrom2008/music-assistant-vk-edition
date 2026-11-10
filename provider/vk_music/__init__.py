@@ -1,7 +1,7 @@
 """VK Music provider for Music Assistant 2.10.9.
 
-Uses an existing VK access token. It never collects passwords, automates login,
-downloads audio to disk, or bypasses service access controls.
+Uses a token obtained by the interactive VK setup flow. The provider does not
+store VK passwords or bypass service access controls.
 """
 from __future__ import annotations
 
