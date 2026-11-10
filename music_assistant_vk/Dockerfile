@@ -1,6 +1,6 @@
 FROM ghcr.io/music-assistant/server:2.10.9
 LABEL org.opencontainers.image.source="https://github.com/maxidrom2008/music-assistant-vk-edition"
-RUN /app/venv/bin/pip install --no-cache-dir 'vkpymusic==4.0.2' \
+RUN /app/venv/bin/python -m pip install --no-cache-dir 'vkpymusic==4.0.2' \
     && /app/venv/bin/python -c 'import vkpymusic; print("VKpyMusic dependency installed")'
 COPY provider/vk_music /tmp/vk_music_provider
 RUN SITE_PACKAGES="$(/app/venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
