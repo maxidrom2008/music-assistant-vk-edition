@@ -1,8 +1,9 @@
 name: Music Assistant VK Edition
 version: "0.2.6"
 slug: music_assistant_vk
-description: Separate Music Assistant Server with VK Music search and playback
+description: Music Assistant 2.10.9 with VK Music provider, personal library, playlists and playback
 url: https://github.com/maxidrom2008/music-assistant-vk-edition
+changelog: https://github.com/maxidrom2008/music-assistant-vk-edition/blob/main/CHANGELOG.md
 arch:
   - amd64
 homeassistant_api: true
