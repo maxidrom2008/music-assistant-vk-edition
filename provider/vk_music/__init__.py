@@ -26,7 +26,6 @@ from music_assistant_models.media_items import (
 )
 from music_assistant_models.streamdetails import StreamDetails
 from vkpymusic import Service
-from vkpymusic.models import Playlist as VKPlaylist
 from vkpymusic.vk_api import VkApiException
 
 if TYPE_CHECKING:
@@ -194,8 +193,8 @@ class VKMusicProvider(MusicProvider):
         if not query:
             return results
         safe_limit = min(max(limit, 1), 30)
-        try:
-            if MediaType.TRACK in media_types or MediaType.ARTIST in media_types:
+        if MediaType.TRACK in media_types or MediaType.ARTIST in media_types:
+            try:
                 songs = await self._service.search_songs_by_text_async(query, count=safe_limit)
                 if MediaType.TRACK in media_types:
                     results.tracks = [self._parse_song(song) for song in songs]
@@ -210,20 +209,30 @@ class VKMusicProvider(MusicProvider):
                             seen.add(key)
                             artists.append(self._parse_artist(song.artist))
                     results.artists = artists[:safe_limit]
-            if MediaType.ALBUM in media_types:
+            except VkApiException as err:
+                self.logger.warning("VK track search denied or failed (code %s)", getattr(err, "error_code", "unknown"))
+            except Exception:
+                self.logger.exception("Unexpected VK track search failure")
+        if MediaType.ALBUM in media_types:
+            try:
                 albums = await self._service.search_albums_by_text_async(query, count=safe_limit)
                 results.albums = [
                     self._parse_vk_collection(item, MediaType.ALBUM) for item in albums
                 ]
-            if MediaType.PLAYLIST in media_types:
+            except VkApiException as err:
+                self.logger.warning("VK album search denied or failed (code %s)", getattr(err, "error_code", "unknown"))
+            except Exception:
+                self.logger.exception("Unexpected VK album search failure")
+        if MediaType.PLAYLIST in media_types:
+            try:
                 playlists = await self._service.search_playlists_by_text_async(query, count=safe_limit)
                 results.playlists = [
                     self._parse_vk_collection(item, MediaType.PLAYLIST) for item in playlists
                 ]
-        except VkApiException as err:
-            self.logger.warning("VK search request denied or failed (code %s)", getattr(err, "error_code", "unknown"))
-        except Exception:
-            self.logger.exception("Unexpected VK search failure")
+            except VkApiException as err:
+                self.logger.warning("VK playlist search denied or failed (code %s)", getattr(err, "error_code", "unknown"))
+            except Exception:
+                self.logger.exception("Unexpected VK playlist search failure")
         return results
 
     async def get_track(self, prov_track_id: str) -> Track:
@@ -236,28 +245,46 @@ class VKMusicProvider(MusicProvider):
             raise MediaNotFoundError(f"VK track not found: {prov_track_id}")
         return self._parse_song(songs[0])
 
+    def _apply_collection_metadata(self, item: Album | Playlist, payload: dict[str, str]) -> None:
+        """Restore collection text and artwork saved with a provider item id."""
+        if description := payload.get("description"):
+            item.metadata.description = description
+        if photo := payload.get("photo"):
+            item.metadata.images = UniqueList(
+                [
+                    MediaItemImage(
+                        type=ImageType.THUMB,
+                        path=photo,
+                        provider=self.instance_id,
+                        remotely_accessible=True,
+                    )
+                ]
+            )
+
     async def get_album(self, prov_album_id: str) -> Album:
         """Resolve an album selected from VK search."""
         payload = self._decode_collection_id(prov_album_id)
-        playlist = payload['playlist']
-        return Album(
+        item = Album(
             item_id=prov_album_id,
             provider=self.instance_id,
-            name=payload.get("name") or f"VK album {playlist}",
+            name=payload.get("name") or f"VK album {payload['playlist']}",
             provider_mappings=self._mapping(prov_album_id),
         )
+        self._apply_collection_metadata(item, payload)
+        return item
 
     async def get_playlist(self, prov_playlist_id: str) -> Playlist:
         """Resolve a playlist selected from VK search."""
         payload = self._decode_collection_id(prov_playlist_id)
-        owner, playlist = payload['owner'], payload['playlist']
-        return Playlist(
+        item = Playlist(
             item_id=prov_playlist_id,
             provider=self.instance_id,
-            name=payload.get("name") or f"VK playlist {playlist}",
-            owner=str(owner),
+            name=payload.get("name") or f"VK playlist {payload['playlist']}",
+            owner=payload["owner"],
             provider_mappings=self._mapping(prov_playlist_id),
         )
+        self._apply_collection_metadata(item, payload)
+        return item
 
     async def get_album_tracks(self, prov_album_id: str) -> list[Track]:
         """Fetch the tracks belonging to a VK album."""
