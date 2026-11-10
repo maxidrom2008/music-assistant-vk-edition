@@ -11,7 +11,7 @@ In Music Assistant open **Settings → Music Providers → Add provider → VK M
 - Track search.
 - Artist results derived from matching track results, with artist top-track and album lookup.
 - Album and playlist search.
-- Browse the authenticated user's playlists.
+- Browse the authenticated user's audio library (first 100 tracks) and playlists.
 - Retrieve tracks from selected albums and playlists.
 - Resolve an audio URL immediately before playback and hand it to Music Assistant's normal HTTP stream pipeline.
 
