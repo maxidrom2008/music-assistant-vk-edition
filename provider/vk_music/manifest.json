@@ -3,7 +3,7 @@
   "domain": "vk_music",
   "stage": "experimental",
   "name": "VK Music",
-  "description": "Search and stream VK Music using your own account token.",
+  "description": "Search and stream VK Music using interactive VK login and verification.",
   "codeowners": ["@maxidrom2008"],
   "requirements": ["vkpymusic==4.0.2"],
   "documentation": "https://github.com/maxidrom2008/music-assistant-vk-edition",
